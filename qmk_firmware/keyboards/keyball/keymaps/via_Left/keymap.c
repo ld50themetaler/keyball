@@ -19,6 +19,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 #include "pointing_device.h"
 #include "oledkit.h"
+#include "stdlib.h"
+#include "../../pmw/pmw.h"
+#include "../../optical_sensor/optical_sensor.h"
 
 enum keymap_layers {
     _QWERTY,
@@ -46,6 +49,13 @@ enum keymap_layers {
 #define KC_G_DEL    MT(MOD_LGUI, KC_DEL)    // command or delete
 #define KC_A_BS     LT(_BALL, KC_BSPC)      // adjust or back space
 #define KC_A_DEL    LT(_BALL, KC_DEL)       // adjust or delete
+
+enum custom_keycodes {
+    KC_CPI_DEF = SAFE_RANGE,
+    KC_CPI_UP,
+    KC_CPI_DOWN
+};
+
 // clang-format on
 
 // clang-format off
@@ -89,7 +99,7 @@ const uint16_t PROGMEM keymaps[][MATRIX_ROWS][MATRIX_COLS] = {
 
   [_BALL] = LAYOUT_left_ball(
   //,-----------------------------------------------------.                    ,-----------------------------------------------------.
-        RESET, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                      XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
+        RESET, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,                      KC_CPI_DEF, KC_CPI_UP, KC_CPI_DOWN, XXXXXXX, XXXXXXX, XXXXXXX,
   //|--------+--------+--------+--------+--------+--------|                    |--------+--------+--------+--------+--------+--------|
       RGB_TOG, RGB_HUI, RGB_SAI, RGB_VAI, XXXXXXX, XXXXXXX,                      XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX, XXXXXXX,
   //|--------+--------+--------+--------+--------+--------|                    `--------+--------+--------+--------+--------+--------|
@@ -143,3 +153,105 @@ void oledkit_render_info_user(void) {
 }
 
 #endif
+
+// clip2int8 clips an integer fit into int8_t.
+static inline int8_t clip2int8(int16_t v) { return (v) < -127 ? -127 : (v) > 127 ? 127 : (int8_t)v; }
+
+int8_t keyball_process_trackball_acceleration(const int16_t val) {
+    int step1 = 3;
+    float step1_acc = 3;
+
+    int step2 = 10;
+    float step2_acc = 13;
+
+    int abs_val = abs(val);
+
+    int8_t result = 0;
+
+    if (abs_val > step2) {
+        result = clip2int8(val * step2_acc);
+    } else if (abs_val > step1){
+        result = clip2int8(val * step1_acc);
+    } else {
+        result = clip2int8(val);
+    }
+
+    return result;
+}
+
+void keyball_process_trackball_user(const trackball_delta_t *primary, const trackball_delta_t *secondary) {
+    bool is_scroll_mode = keyball_get_scroll_mode();
+    report_mouse_t r = pointing_device_get_report();
+    if (primary) {
+        if (!is_scroll_mode) {
+            r.x = keyball_process_trackball_acceleration(primary->x);
+            r.y = keyball_process_trackball_acceleration(primary->y);
+        } else {
+            r.h += clip2int8(primary->x);
+            r.v -= clip2int8(primary->y);
+        }
+    }
+    if (secondary) {
+        r.h += clip2int8(secondary->x);
+        r.v -= clip2int8(secondary->y);
+    }
+
+    pointing_device_set_report(r);
+    pointing_device_send();
+}
+
+void keyboard_post_init_user(void) {
+    eeconfig_t kb_config;
+    kb_config.raw = eeconfig_read_user();
+
+    if (!kb_config.cpi) {
+        kb_config.cpi = DEFAULT_CPI;
+        eeconfig_update_user(kb_config.raw);
+    }
+
+    pmw_set_config((config_pmw_t){kb_config.cpi});
+}
+
+static void on_cpi_button(int cpi, keyrecord_t *record, bool absolute) {
+    if (!record->event.pressed) return;
+
+    eeconfig_t kb_config;
+
+    if (absolute) {
+        kb_config.cpi = (uint16_t)CLAMP_CPI(cpi);
+    } else {
+        kb_config.raw = eeconfig_read_user();
+        int config_1;
+
+        if (cpi < 0 && kb_config.cpi < abs(cpi)) {
+            config_1 = MIN_CPI;
+        } else {
+            config_1 = (int)kb_config.cpi + cpi;
+        }
+
+        kb_config.cpi = (uint16_t)CLAMP_CPI(config_1);
+    }
+
+    eeconfig_update_user(kb_config.raw);
+    pmw_set_config((config_pmw_t){kb_config.cpi});
+}
+
+bool process_record_user(uint16_t keycode, keyrecord_t *record)
+{
+    switch (keycode) {
+        case KC_CPI_DEF:
+            on_cpi_button(DEFAULT_CPI, record, true);
+            return false;
+
+        case KC_CPI_UP:
+            on_cpi_button(4 * CPI_STEP, record, false);
+            return false;
+
+        case KC_CPI_DOWN:
+            on_cpi_button(-4 * CPI_STEP, record, false);
+            return false;
+
+        default:
+            return true;
+    }
+}
