@@ -51,7 +51,7 @@ keyball_t keyball = {
     .scroll_mode = false,
     .scroll_div  = 0,
 
-    .pressing_keys = { BL, BL, BL, BL, BL, BL, 0 },
+    .pressing_keys = { '\xB0', '\xB0', '\xB0', '\xB0', '\xB0', '\xB0', 0 },
 };
 
 //////////////////////////////////////////////////////////////////////////////
@@ -219,6 +219,12 @@ static void motion_to_mouse_scroll(keyball_motion_t *m, report_mouse_t *r, bool 
         r->h = 0;
     }
 #endif
+
+    // スクロールを反転
+    // 参考 https://qiita.com/toxaO/items/dc9ead660a6c4e8075c6
+    r->h = -r->h;
+    r->v = -r->v;
+
 }
 
 static void motion_to_mouse(keyball_motion_t *m, report_mouse_t *r, bool is_left, bool as_scroll) {
