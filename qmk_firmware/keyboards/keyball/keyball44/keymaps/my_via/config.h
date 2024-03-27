@@ -39,8 +39,3 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #define AUTO_MOUSE_DEFAULT_LAYER 6
 
 #define DYNAMIC_KEYMAP_LAYER_COUNT 8
-
-#undef SPLIT_HAND_MATRIX_GRID
-#undef SPLIT_USB_DETECT
-#undef SPLIT_USB_TIMEOUT
-#define EE_HANDS
